@@ -74,6 +74,8 @@ def fetchAndCreateAlert(update):
     if len(text.split('@'))==2:
         token,price=text.split('@')
 
+    if len(token)<5:
+        token=token+'inr'
     responsejson = requests.get('https://api.wazirx.com/api/v2/tickers').json()
     response=''
     if token in responsejson:
@@ -96,14 +98,11 @@ def fetchAndCreateAlert(update):
 def start(update):
     bot.sendMessage(chat_id=update.message.chat.id,text=HELP_TEXT)
 
-HELP_TEXT='Usage: \n1.Message <token> to get its price\ne.g. wrxinr or btcinr\n\n2.To set alert <token>@<price>\ne.g. wrxinr@220\n\n3.Show alerts /alerts'
+HELP_TEXT="Usage: \n1.Message <token> to get its price\ne.g. wrxinr or btcinr\n\n"\
+"2.To set alert <token>@<price>\ne.g. wrxinr@220\n\n3.Show alerts /alerts\n\n"\
+"4.'inr' is default, so wrx or btc returns wrxinr or btcinr"
 
 telegram_token=json.load(open('config.json','r'))['telegram_token']
 bot = telegram.Bot(token=telegram_token)
 dispatcher = Dispatcher(bot=bot,use_context=True,update_queue=Queue())
 dispatcher.add_handler(CallbackQueryHandler(alert_callback))
-
-
-
-
-
