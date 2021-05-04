@@ -43,11 +43,12 @@ def fetch_alerts(id:str):
     responsestr = ''
     i = 0
     keyboards = []
+    responsejson = requests.get(TICKER_URL).json()
     for alert in alertslist:
         i = i + 1
         keyboards.append(InlineKeyboardButton(
             f"Delete '{i}'", callback_data=alert['key'] + ' ' + alert['token'] + '@' + alert['price']))
-        responsestr = responsestr + str(i) + '. ' + alert['token'] + \
+        responsestr = responsestr + str(i) + '. ' + alert['token'] + '@'+responsejson[alert['token']]['last']+\
                       (' greater than ' if alert['condition'] > 0 else ' less than ') + ' ' + alert['price'] + '\n'
     responsestr = responsestr if responsestr else 'No alerts'
     return responsestr,keyboards
@@ -69,14 +70,13 @@ def fetchAndCreateAlert(update):
 
     if len(token)<5:
         token=token+'inr'
-    responsejson = requests.get('https://api.wazirx.com/api/v2/tickers').json()
+    responsejson = requests.get(TICKER_URL).json()
     response=''
     if token in responsejson:
         response = responsejson[token]['last']
         if price:
             count=db.count(update.message.chat.id)
-            
-            if count<3 or update.message.chat.id==745593003:
+            if count<3:
                 response_val=Decimal(response)
                 price_val =Decimal(price)
                 condition=1 if price_val>=response_val else -1
@@ -87,6 +87,7 @@ def fetchAndCreateAlert(update):
 
     response= response if response else HELP_TEXT
     bot.sendMessage(chat_id=update.message.chat.id, text=response)
+
 
 
 def start(update):
@@ -100,7 +101,7 @@ def schedule_quote(event):
     return "ok"
 
 def fetch_alerts_notify():
-    responsejson = requests.get('https://api.wazirx.com/api/v2/tickers').json()
+    responsejson = requests.get(TICKER_URL).json()
     alertslist = db.fetch_all_alerts()
     print(alertslist)
 
@@ -125,6 +126,7 @@ def fetch_alerts_notify():
 telegram_token=json.load(open('config.json','r'))['telegram_token']
 bot = telegram.Bot(token=telegram_token)
 
+TICKER_URL='https://api.wazirx.com/api/v2/tickers'
 HELP_TEXT="Usage: \n1.Message <token> to get its price\ne.g. wrxinr or btcinr\n\n"\
 "2.To set alert <token>@<price>\ne.g. wrxinr@220\n\n3.Show alerts /alerts\n\n"\
 "4.'inr' is default, so wrx or btc returns wrxinr or btcinr"
