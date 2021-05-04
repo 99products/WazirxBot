@@ -1,4 +1,4 @@
 requests
 python-telegram-bot==13.5
-flask
+fastapi
 deta

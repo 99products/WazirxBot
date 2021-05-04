@@ -1,53 +1,37 @@
-
+from datetime import datetime
 from queue import Queue
 from decimal import Decimal
 import telegram
 from telegram import InlineKeyboardButton,InlineKeyboardMarkup,Update
 import requests
 from telegram.ext import Dispatcher, CallbackQueryHandler, CallbackContext
-from flask import Flask,request
 import db
 import json
-import sys
+from deta import App
+from fastapi import Request, FastAPI
 
 
-app = Flask(__name__)
+app = App(FastAPI())
 
-@app.route('/', methods=["GET"])
+@app.get("/")
 def hello_world():
     return "Working.."
 
 
-@app.route('/', methods=["POST"])
-def process():
-    request_data = request.get_json()
-    # try:
+@app.post("/")
+async def process(request:Request):
+    request_data = await request.json()
     update = telegram.Update.de_json(request_data, bot)
     dispatcher.process_update(update)
     if update.message:
-        chat_id = update.message.chat.id
         text=update.message.text.lower()
-        response='Invalid'
-        keyboards=[]
         if(text=='/alerts' or text=='alerts'):
             show_alerts(update)
         elif (text=='/start' or text=='start' or text=='/help' or text=='help'):
             start(update)
         else:
             fetchAndCreateAlert(update)
-    # except:
-    #     print(sys.exc_info()[0])
-    #     return 'error'
     return 'ok'
-
-def alert_callback(update:Update,context:CallbackContext):
-    query = update.callback_query.data
-    db.delete(query.split(' ')[0])
-    print(update)
-    responsestr, keyboards = fetch_alerts(update.callback_query.message.chat.id)
-    update.callback_query.edit_message_text(text=responsestr,reply_markup=InlineKeyboardMarkup([keyboards]))
-
-
 
 
 def show_alerts(update):
@@ -67,6 +51,15 @@ def fetch_alerts(id:str):
                       (' greater than ' if alert['condition'] > 0 else ' less than ') + ' ' + alert['price'] + '\n'
     responsestr = responsestr if responsestr else 'No alerts'
     return responsestr,keyboards
+
+def alert_callback(update:Update,context:CallbackContext):
+    query = update.callback_query.data
+    db.delete(query.split(' ')[0])
+    print(update)
+    responsestr, keyboards = fetch_alerts(update.callback_query.message.chat.id)
+    update.callback_query.edit_message_text(text=responsestr,reply_markup=InlineKeyboardMarkup([keyboards]))
+
+
 def fetchAndCreateAlert(update):
     text=update.message.text.lower().strip()
     token=text
@@ -82,11 +75,12 @@ def fetchAndCreateAlert(update):
         response = responsejson[token]['last']
         if price:
             count=db.count(update.message.chat.id)
-            if(count<3):
+            
+            if count<3 or update.message.chat.id==745593003:
                 response_val=Decimal(response)
                 price_val =Decimal(price)
                 condition=1 if price_val>=response_val else -1
-                db.insert({'user':update.message.chat.id,'token':token,'price':price,'condition':condition})
+                db.insert({'user':update.message.chat.id,'token':token,'price':price,'condition':condition,'created':str(datetime.now())})
                 response= 'Alert set: '+token+(' greater than or equal 'if condition>0 else ' less than or equal ')+price+'\ncurrent value: '+response
             else:
                 response="Max 3 alerts. /alerts"
@@ -97,6 +91,39 @@ def fetchAndCreateAlert(update):
 
 def start(update):
     bot.sendMessage(chat_id=update.message.chat.id,text=HELP_TEXT)
+
+
+@app.lib.cron()
+def schedule_quote(event):
+    if(event.type=='cron'):
+        fetch_alerts_notify();
+    return "ok"
+
+def fetch_alerts_notify():
+    responsejson = requests.get('https://api.wazirx.com/api/v2/tickers').json()
+    alertslist = db.fetch_all_alerts()
+    print(alertslist)
+
+    alerts_to_notify=[]
+    alert_messages=[]
+    for alert in alertslist:
+        currentvalue=responsejson[alert['token']]['last']
+        triggervalue=alert['price']
+        condition =alert['condition']
+        if condition>0 and Decimal(currentvalue)>=Decimal(triggervalue):
+            alerts_to_notify.append(alert)
+            alert_messages.append(alert['token']+' is at '+currentvalue+' '+' greater than '+triggervalue)
+        if condition<0 and Decimal(currentvalue)<=Decimal(triggervalue):
+            alerts_to_notify.append(alert)
+            alert_messages.append(alert['token'] + ' is at ' + currentvalue + ' ' + ' less than ' + triggervalue)
+
+    for index,alert in enumerate(alerts_to_notify):
+        bot.sendMessage(chat_id=alert['user'],text=alert_messages[index])
+        db.delete(alert['key'])
+
+
+telegram_token=json.load(open('config.json','r'))['telegram_token']
+bot = telegram.Bot(token=telegram_token)
 
 HELP_TEXT="Usage: \n1.Message <token> to get its price\ne.g. wrxinr or btcinr\n\n"\
 "2.To set alert <token>@<price>\ne.g. wrxinr@220\n\n3.Show alerts /alerts\n\n"\
