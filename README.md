@@ -1,5 +1,8 @@
 # WazirxBot
-An alert and price bot for india's crypto exchange wazirx
+An alert and price bot for india's crypto exchange wazirx.
+
+Deployed as bot here,
+https://t.me/wazirxin_bot
 
 The bot is developed and deployed in deta.sh
 
